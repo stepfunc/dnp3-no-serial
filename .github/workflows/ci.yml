@@ -1,0 +1,153 @@
+name: CI
+env:
+  $DNP3_TAG: 7ff5fe65427aeb49201711ff00bae7ce92af7964
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  pull_request:
+jobs:
+  # Windows MSVC x64 FFI  (Windows 7+)
+  ffi-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc # 64-bit MSVC (Windows 7+)
+            extra-param: # nothing
+    steps:
+      - name: Checkout DNP3
+        uses: actions/checkout@v3
+        with:
+          repository: stepfunc/dnp3
+          ref: ${{ env.$DNP3_TAG }}
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Copy Windows config
+        shell: pwsh
+        run: Copy-Item -Path .cargo/config-windows.toml -Destination .cargo/config.toml
+      - name: Create FFI modules dir
+        run: mkdir ffi-modules\${{ matrix.target }}
+      - name: Build FFI
+        run: cargo build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }} --message-format json | Out-File -encoding "UTF8" .\ffi-modules\${{ matrix.target }}\build.log
+      - name: Copy .dll
+        run: cp .\target\${{ matrix.target }}\release\dnp3_ffi.dll .\ffi-modules\${{ matrix.target }}
+      - name: Upload FFI modules
+        uses: actions/upload-artifact@v3
+        with:
+          name: ffi-modules
+          path: ffi-modules
+  # Cross-compile FFI for Linux platforms
+  ffi-cross:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - arm-unknown-linux-gnueabihf # ARMv6 Linux, hardfloat (kernel 3.2, glibc 2.17)
+          - aarch64-unknown-linux-gnu # ARM64 Linux (kernel 4.2, glibc 2.17+)
+          - x86_64-unknown-linux-gnu # 64-bit Linux (kernel 2.6.32+, glibc 2.11+)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout DNP3
+        uses: actions/checkout@v3
+        with:
+          repository: stepfunc/dnp3
+          ref: ${{ env.DNP3_TAG }}
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+      - name: Install Rust Cross
+        run: cargo install cross
+      - name: Create FFI modules dir
+        run: mkdir -p ffi-modules/${{ matrix.target }}
+      - name: Build FFI
+        run: cross build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }} --message-format json > ffi-modules/${{ matrix.target }}/build.log
+      - name: Copy .so
+        run: cp  ./target/${{ matrix.target }}/release/libdnp3_ffi.so ./ffi-modules/${{ matrix.target }}
+      - name: Upload compiled FFI modules
+        uses: actions/upload-artifact@v3
+        with:
+          name: ffi-modules
+          path: ffi-modules
+  # Package Nuget
+  packaging:
+    needs: [ffi-cross, ffi-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+      - name: Checkout BOM tools repo
+        uses: actions/checkout@v3
+        with:
+          repository: stepfunc/bom-tools
+          ref: 0.1.0
+          path: bom-tools
+      - name: Install BOM tools
+        working-directory: bom-tools
+        run: cargo install --path bom-tools
+      - name: Checkout Rodbus
+        uses: actions/checkout@v3
+        with:
+          repository: stepfunc/rodbus
+          ref: ${{ env.RODBUS_TAG }}
+      - name: Download compiled FFI
+        uses: actions/download-artifact@v2
+        with:
+          name: ffi-modules
+          path: ffi-modules
+      - name: Create FFI third-party-licenses.txt
+        run: bom-tools gen-licenses-dir ./ffi-modules build.log ./dep_config.json > third-party-licenses.txt
+      - name: Upload third-party-licenses.txt
+        uses: actions/upload-artifact@v3
+        with:
+          name: third-party-licenses
+          path: third-party-licenses.txt
+      - name: Package .NET bindings
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --bin dnp3-bindings -- --dotnet --package ./ffi-modules -f third-party-licenses.txt
+      - name: Upload .NET bindings
+        uses: actions/upload-artifact@v3
+        with:
+          name: dotnet-bindings
+          path: |
+            ffi/bindings/dotnet/nupkg/dnp3*.nupkg
+            ffi/bindings/dotnet/nupkg/dnp3*.snupkg
+  # Create Github Release
+  release:
+    needs: [packaging]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          files: |
+            artifacts/dotnet-bindings/dnp3*.nupkg
+            artifacts/dotnet-bindings/dnp3*.snupkg
+            artifacts/third-party-licenses/third-party-licenses.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
