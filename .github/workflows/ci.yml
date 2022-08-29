@@ -102,11 +102,11 @@ jobs:
       - name: Install BOM tools
         working-directory: bom-tools
         run: cargo install --path bom-tools
-      - name: Checkout Rodbus
+      - name: Checkout DNP3
         uses: actions/checkout@v3
         with:
-          repository: stepfunc/rodbus
-          ref: ${{ env.RODBUS_TAG }}
+          repository: stepfunc/dnp3
+          ref: ${{ env.$DNP3_TAG }}
       - name: Download compiled FFI
         uses: actions/download-artifact@v2
         with:
