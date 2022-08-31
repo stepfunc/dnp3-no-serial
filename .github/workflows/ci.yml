@@ -1,6 +1,6 @@
 name: CI
 env:
-  $DNP3_TAG: 76cb092051aff506242ab76294feb009f12915db
+  $DNP3_TAG: 1.1.0
 on:
   push:
     branches:
