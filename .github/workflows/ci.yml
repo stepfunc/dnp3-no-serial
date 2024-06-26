@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: stepfunc/dnp3
-          ref: 1.5.2
+          ref: 1.6.0
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -30,7 +30,7 @@ jobs:
       - name: Create FFI modules dir
         run: mkdir ffi-modules\${{ matrix.target }}
       - name: Build FFI
-        run: cargo build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }} --message-format json | Out-File -encoding "UTF8" .\ffi-modules\${{ matrix.target }}\build.log
+        run: cargo build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }}
       - name: Copy .dll
         run: cp .\target\${{ matrix.target }}\release\dnp3_ffi.dll .\ffi-modules\${{ matrix.target }}
       - name: Upload FFI modules
@@ -61,7 +61,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: stepfunc/dnp3
-          ref: 1.5.2
+          ref: 1.6.0
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -74,7 +74,7 @@ jobs:
       - name: Create FFI modules dir
         run: mkdir -p ffi-modules/${{ matrix.target }}
       - name: Build FFI
-        run: cross build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }} --message-format json > ffi-modules/${{ matrix.target }}/build.log
+        run: cross build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }}
       - name: Copy .so
         run: cp  ./target/${{ matrix.target }}/release/libdnp3_ffi.so ./ffi-modules/${{ matrix.target }}
       - name: Upload compiled FFI modules
@@ -93,27 +93,29 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - name: Checkout BOM tools repo
-        uses: actions/checkout@v3
-        with:
-          repository: stepfunc/bom-tools
-          ref: 0.1.0
-          path: bom-tools
-      - name: Install BOM tools
-        working-directory: bom-tools
-        run: cargo install --path bom-tools
+      - name: Install Cargo CycloneDx
+        run: cargo install cargo-cyclonedx
+      - name: Install custom allow-list tool
+        run: cargo install --git https://github.com/stepfunc/bom-tools.git
       - name: Checkout DNP3
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: stepfunc/dnp3
-          ref: 1.5.2
+          ref: 1.6.0
       - name: Download compiled FFI
         uses: actions/download-artifact@v3
         with:
           name: ffi-modules
           path: ffi-modules
+      - name: Create SBOMs
+        run: |
+          for dir in ffi-modules/*; do
+            target=`basename "${dir}"`
+            cargo cyclonedx -f json --target $target
+            mv ./ffi/dnp3-ffi/dnp3-ffi.cdx.json ffi-modules/$target
+          done
       - name: Create FFI third-party-licenses.txt
-        run: bom-tools gen-licenses-dir ./ffi-modules build.log ./dep_config.json > third-party-licenses.txt
+        run: allow-list gen-licenses-dir -l ffi-modules -b dnp3-ffi.cdx.json -c allowed.json > third-party-licenses.txt
       - name: Upload third-party-licenses.txt
         uses: actions/upload-artifact@v3
         with:
