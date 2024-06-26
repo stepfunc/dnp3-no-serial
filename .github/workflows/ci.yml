@@ -24,9 +24,7 @@ jobs:
       - name: Install Rust ${{ matrix.rust }}
         uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          override: true
       - name: Create FFI modules dir
         run: mkdir ffi-modules\${{ matrix.target }}
       - name: Build FFI
@@ -65,10 +63,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
+          targets: ${{ matrix.target }}
       - name: Install Rust Cross
         run: cargo install cross
       - name: Create FFI modules dir
@@ -90,9 +86,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          override: true
       - name: Install Cargo CycloneDx
         run: cargo install cargo-cyclonedx
       - name: Install custom allow-list tool
