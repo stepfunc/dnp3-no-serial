@@ -27,7 +27,7 @@ jobs:
         run: mkdir ffi-modules\${{ matrix.target }}
       - name: Build FFI
         shell: bash
-        run: cargo build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }} --message-format json > ffi-modules/${{ matrix.target }}/build.json
+        run: cargo build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }} --message-format json-render-diagnostics > ffi-modules/${{ matrix.target }}/build.json
       - name: Copy .dll
         run: cp .\target\${{ matrix.target }}\release\dnp3_ffi.dll .\ffi-modules\${{ matrix.target }}
       - name: Upload FFI modules
@@ -69,7 +69,7 @@ jobs:
       - name: Create FFI modules dir
         run: mkdir -p ffi-modules/${{ matrix.target }}
       - name: Build FFI
-        run: cross build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }} --message-format json > ffi-modules/${{ matrix.target }}/build.json
+        run: cross build --release -p dnp3-ffi --no-default-features --features tls --target ${{ matrix.target }} --message-format json-render-diagnostics > ffi-modules/${{ matrix.target }}/build.json
       - name: Copy .so
         run: cp  ./target/${{ matrix.target }}/release/libdnp3_ffi.so ./ffi-modules/${{ matrix.target }}
       - name: Upload compiled FFI modules
