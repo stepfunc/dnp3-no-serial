@@ -22,7 +22,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: "1.79.0"
       - name: Create FFI modules dir
         run: mkdir ffi-modules\${{ matrix.target }}
       - name: Build FFI
@@ -62,7 +62,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: "1.79.0"
           targets: ${{ matrix.target }}
       - name: Install Rust Cross
         run: cargo install cross
@@ -85,7 +85,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: "1.79.0"
       - name: Install custom allow-list tool
         run: cargo install --git https://github.com/stepfunc/bom-tools.git --tag 0.2.1
       - name: Checkout DNP3
