@@ -1,0 +1,100 @@
+# One-off: a CycloneDX SBOM for the already-published 1.7.0 release.
+#
+# The build evidence is the build log of every target from the actual 1.7.0 release run, plus
+# the two `cargo tree` outputs generated now at dnp3 1.7.0 with the release's exact arguments, on
+# the same host OS as each build. bom-tools cross-checks them against each other, so the SBOM
+# describes the shipped binaries rather than a rebuild.
+name: Retroactive SBOM (1.7.0)
+on:
+  pull_request:
+permissions:
+  contents: read
+  actions: read
+env:
+  DNP3_REF: "1.7.0"
+  # the CI run that built the published 1.7.0 packages
+  RELEASE_RUN: "35664088083"
+  # dnp3 main with the allowed.json migrated for bom-tools 0.3.0 (stepfunc/dnp3#450)
+  CONFIG_COMMIT: 42abb67ea1157f381829839979b3bfc8f00e1db1
+jobs:
+  trees:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            targets: x86_64-pc-windows-msvc
+          - runner: ubuntu-latest
+            targets: arm-unknown-linux-gnueabihf aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu aarch64-unknown-linux-musl x86_64-unknown-linux-musl arm-unknown-linux-musleabihf
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout DNP3
+        uses: actions/checkout@v6
+        with:
+          repository: stepfunc/dnp3
+          ref: ${{ env.DNP3_REF }}
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Generate cargo trees with the release's arguments
+        shell: bash
+        run: |
+          format=(--prefix depth --color never --format '{p}|{f}')
+          for target in ${{ matrix.targets }}; do
+            out=evidence/ffi/$target
+            mkdir -p $out
+            args=(-p dnp3-ffi --target $target --no-default-features --features tls --locked)
+            cargo tree "${args[@]}" -e normal,build "${format[@]}" > $out/tree.txt
+            cargo tree "${args[@]}" -e normal,no-proc-macro "${format[@]}" > $out/runtime-tree.txt
+          done
+      - name: Upload trees
+        uses: actions/upload-artifact@v6
+        with:
+          name: trees-${{ matrix.runner }}
+          path: evidence
+  sbom:
+    needs: [trees]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout DNP3
+        uses: actions/checkout@v6
+        with:
+          repository: stepfunc/dnp3
+          ref: ${{ env.DNP3_REF }}
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Download the 1.7.0 release build logs
+        uses: actions/download-artifact@v7
+        with:
+          run-id: ${{ env.RELEASE_RUN }}
+          github-token: ${{ github.token }}
+          pattern: ffi-modules-*
+          path: release-build
+          merge-multiple: true
+      - name: Download the trees
+        uses: actions/download-artifact@v7
+        with:
+          pattern: trees-*
+          path: evidence
+          merge-multiple: true
+      - name: Assemble the evidence
+        run: |
+          for dir in evidence/ffi/*/; do
+            target=$(basename "$dir")
+            cp "release-build/$target/build.json" "$dir/build.json"
+          done
+          ls evidence/ffi/*/build.json | wc -l | grep -qx 7
+      - name: Install bom-tools
+        run: cargo install --locked --git https://github.com/stepfunc/bom-tools.git --tag 0.3.0
+      - name: Create the SBOM
+        run: |
+          curl -sSfL "https://raw.githubusercontent.com/stepfunc/dnp3/$CONFIG_COMMIT/allowed.json" -o reviewed-allowed.json
+          cargo metadata --format-version 1 --all-features --locked > metadata.json
+          COMMON="--root-package dnp3-ffi -m metadata.json -c reviewed-allowed.json"
+          mkdir out
+          bom-tools licenses -e evidence/ffi $COMMON > out/third-party-licenses.txt
+          bom-tools sbom -e evidence/ffi $COMMON --lockfile Cargo.lock > out/dnp3-ffi.cdx.json
+      - name: Upload the SBOM
+        uses: actions/upload-artifact@v6
+        with:
+          name: retro-sbom-1.7.0
+          path: out
